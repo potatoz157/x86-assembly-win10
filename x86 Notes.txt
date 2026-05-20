@@ -1,0 +1,319 @@
+
+; NOTE: REGISTERS
+    ; In 64-bit, the register names are prefixed with R-, but in 32-bit, the registers are prefixed with E-. 
+    ; Example, EAX vs RAX, EAX would be the lower 32-bits of RAX on a 64-bit system.
+    ; 1. General-Purpose Registers
+        ; EAX - Accumulator. Used for return values from functions, arithmetic operations, and I/O operations. Caller-saved.
+        ; EBX - Base register. Often used as a general-purpose register. Callee-saved.
+        ; ECX - Counter. Used for loops (loop instruction) and shift/rotate instructions. Caller-saved.
+        ; EDX - Data register. Used in multiplication/division (mul, div) and I/O. Caller-saved.
+        ; ESI - Source Index. Often used for string and memory operations. Callee-saved.
+        ; EDI - Destination Index. Often used for string/memory operations. Callee-saved.
+        ; EBP - Base Pointer. Used as a stable reference point for stack frames. Callee-saved.
+        ; ESP - Stack Pointer. Always points to the top of the stack. Special-purpose, don’t use freely.
+        ; In 64-bit, we also have R8 - R15
+    ; 2. Instruction Pointer/Flags
+        ; EIP - Instruction Pointer — points to the next instruction to execute. Updated automatically by call, jmp, ret, etc.
+        ; EFLAGS - Status flags — carry, zero, sign, overflow, direction, interrupt, etc. Affects conditional jumps and arithmetic.
+
+        | **64-bit Register** | **32-bit** | **16-bit** | **8-bit (lower)** | **8-bit (higher)** |
+        | ------------------- | ---------- | ---------- | ----------------- | ------------------ |
+        | **`rax`**           | `eax`      | `ax`       | `al`              | `ah`               |
+        | **`rbx`**           | `ebx`      | `bx`       | `bl`              | `bh`               |
+        | **`rcx`**           | `ecx`      | `cx`       | `cl`              | `ch`               |
+        | **`rdx`**           | `edx`      | `dx`       | `dl`              | `dh`               |
+        | **`rdi`**           | `edi`      | `di`       | `dil`             | `dih`              |
+        | **`rsi`**           | `esi`      | `si`       | `sil`             | `sih`              |
+        | **`rbp`**           | `ebp`      | `bp`       | `bpl`             | `bph`              |
+        | **`rsp`**           | `esp`      | `sp`       | `spl`             | `sph`              |
+        | **`r8`**            | `r8d`      | `r8w`      | `r8b`             |                    |
+        | **`r9`**            | `r9d`      | `r9w`      | `r9b`             |                    |
+        | **`r10`**           | `r10d`     | `r10w`     | `r10b`            |                    |
+        | **`r11`**           | `r11d`     | `r11w`     | `r11b`            |                    |
+        | **`r12`**           | `r12d`     | `r12w`     | `r12b`            |                    |
+        | **`r13`**           | `r13d`     | `r13w`     | `r13b`            |                    |
+        | **`r14`**           | `r14d`     | `r14w`     | `r14b`            |                    |
+        | **`r15`**           | `r15d`     | `r15w`     | `r15b`            |                    |
+
+
+; NOTE: DUP -- USE 'times' INSTEAD
+    ; 'N DUP(a)' can be used to define N duplicates of 'a', e.g. 5 DUP(2) means 2, 2, 2, 2, 2
+    ; DUP is useful in defining continuous blocks of data initialized at a given value, i.e. an array of 2s of given size.
+    ; times N db value  --> repeatedly defines singular bytes N times, each with a value = the given value
+; NOTE: SIZE DIRECTIVES
+    ; Size directives are given to instructions when the memory size that is referred to is ambiguous. For example, if a constant like 4
+    ; is to be stored into a memory location given by [eax], should a single byte be stored at the memory location. Or should the 32-bit representation
+    ; of 4 be stored at [eax]? Both are valid, so we use size directives:
+    ; Directives:
+        ; Instruction Size Suffixes
+        ; byte  --  size of a single byte
+        ; word  --  size of 2 bytes starting at given address
+        ; dword  --  size of 4 bytes starting at given address
+        ; qword  -- size of 8 bytes starting at given address
+        ; Ex: mov byte [eax], 4 -- stores 4 as a byte at address given by eax
+        ; Data Size Directives
+        ; db -- define byte (1 byte)
+        ; dw -- define word (2 bytes)
+        ; dd -- define double word (4 bytes)
+        ; dq -- define quad-word (8 bytes)
+        ; Special Data Directives
+        ; dt -- define 80-bit float (x87 extended precision) -- MIGHT NOT WORK IDK
+        ; ddq/dqword -- define 128-but value (XMM data blocks)
+        ; dqq/dqqword -- define 256-bit value (YMM data blocsks, AVX)
+        ; dqqq -- define 512-bit value (ZMM registers, AVX-512)
+
+; NOTE: THE STACK
+    ; The stack grows downwards, this means that older stack components are at HIGHER memory addresses. The top of the stack (newer components) are at LOWER memory
+    ; addresses. As things are added to the stack, the memory address of the stack pointer DECREMENTS.
+    ; PUSH <param> -> decrements the stack pointer (by 32-bits or 4 bytes), then stores the parameter value at this address.
+    ; POP <param> -> reads the current stack pointer memory address (reads 32-bits or 4 bytes) and stores the value into the parameter, then increments the pointer by the same size.
+    ; ESP = the stack pointer. Any push/pop instructions done uses and updates this register as the reference to the stack. 
+
+; NOTE: STRINGS
+ ; When manipulating strings inside of registers, they are encoded using UNICODE not ASCII.
+
+; NOTE: FUNCTION CALLING CONVENTION
+ ; 32-Bit (Linux?) System
+    ; When calling a function, parameters that will be updated by the function should be stored onto the stack. Then after returning, the result of the function can be 
+    ; expected to be stored into eax. The registers modifed by the function should be restored to their values prior to calling the function.
+    ; CALLER RULES:
+        ; 1. Save caller-saved registers if their values are needed, the registers are EAX, ECX and EDX.
+        ; 2. Push function parameters onto the stack, starting with the LAST parameter FIRST.
+        ; 3. Call the subroutine using 'call _myFunc', using your function name. The return address is automatically pushed onto the stack.
+        ; 4. The return value is stored in EAX. Remove the function parameters from the stack pointer by incrementing it. For 3 parameters, 
+        ; each 4-bytes, 3 x 4-byte = 12-bytes, so add esp, 12. Also restore the caller-saved registers (if needed, from step 1)
+    ; CALLEE RULES:
+        ; At the beginning of the subroutine:
+            ; 1. Push current EBP register value onto the stack. Copy current ESP value into EBP (stores value of base stack pointer into the stack, then copy the stack
+            ; pointer into the base stack pointer). The base pointer, EBP, is FIXED throughout the function, the stack pointer, ESP, changes.
+            ; 2. Allocate space in the stack for local variables (variables used in the body of the subroutine). The stack grows downwards, so lower address = newest elements,
+            ; so perform sub esp, N to add space for local variables. N = number of variables x size of variables, in 32-bit, size = 4-bytes, N = 4 x number of variables.
+            ; Address values on the stack using the BASE POINTER, EBP.
+            ; 3. Push callee-saved registers, EBX, ESI, EDI (if used).
+        ; At the end of the subroutine, prior to returning:
+            ; 1. The return value of the function should be inside EAX.
+            ; 2. Restore callee-saved register values that were modifed. i.e. pop them from the stack.
+            ; 3. Right before returning, restore the previous base pointer value by popping it off the stack.
+            ; 4. Return to the caller by executing the 'ret' instruction.
+ 
+ ; 64-Bit Windows 10 System (x64 Calling Convention)
+    ; Uses the fast-call calling convention by default. Any arguments larger than 8-bytes (the size of a register), must be passed by reference, i.e. a pointer to the value 
+    ; is passed rather than the actual value. Note that the caller must always allocate space for the callee's registers -- must provide space to store 4 register parameters
+    ; even if the callee does not take that many parameters.
+    ; CALLER RULES:
+        ; 1. Save caller-saved registers if their values are needed, the registers are RAX, RCX, RDX, R8, R9, R10, R11.
+        ; 2. Function parameters are passed in the following order using these registers: arg1 = RCX, arg2 = RDX, arg3 = R8, arg4 = r9, additional arguments are passed into the
+        ; stack in reverse order, so if 2 more arguments are needed, pass arg6 then arg5. This ensures stack pointer -> arg5.
+        ; 3. Save 32-bytes of shadow space on the stack. This is so that the register parameters passed to the function have a place to be stored (by the callee), this is not 
+        ; always used, but the space must ALWAYS be provided. This space is saved by doing: sub rsp, 32.
+        ; Also ensure the stack is 16-byte aligned when the function call occurs.
+        ; 4. Call the subroutine using 'call _myFunc', using your function name. The return address is automatically pushed onto the stack.
+        ; 5. The return value is stored in RAX. Remove the function parameters from the stack pointer by incrementing it. For 3 parameters (beyond the 4 register arguments), 
+        ; each 8-bytes, 3 x 8-byte = 24-bytes, so add RSP, 24. Also restore the caller-saved registers (if needed, from step 1).
+        ; 6. Once returning from the function, remove the shadow space as well.
+    ; CALLEE RULES:
+        ; At the beginning of the subroutine:
+            ; 1. Push current RBP register value onto the stack. Copy current RSP value into RBP (stores value of base stack pointer into the stack, then copy the stack
+            ; pointer into the base stack pointer). The base pointer, RBP, is FIXED throughout the function, the stack pointer, RSP, changes. RBP provides a base reference
+            ; to access elements in the stack.
+           ; NOTE: THE ORDER OF 2 AND 3 DEPENDS ON HOW YOU WANT TO DO IT. TYPICALLY, CALLEE-SAVED REGISTERS ARE STORED FIRST, THEN SPACE IS ALLOCATED.
+            ; 2. Allocate space in the stack for local variables (variables used in the body of the subroutine). The stack grows downwards, so lower address = newest elements,
+            ; so perform sub rsp, N to add space for local variables. N = number of variables x size of variables, in 64-bit, size = 8-bytes, N = 8 x number of variables.
+            ; Access values on the stack using the BASE POINTER, RBP.
+            ; 3. Push callee-saved registers, RBX, RBP, RSI, RDI, R12-R15 -- if needed. NOTE: RBP should already be saved, so do not save it again.
+        ; At the end of the subroutine, prior to returning:
+            ; 1. The return value of the function should be inside RAX.
+            ; 2. Remove local variables from the stack.
+            ; 3. Restore callee-saved register values that were modifed. i.e. pop them from the stack.
+            ; 4. Right before returning, restore the previous base pointer value by popping it off the stack.
+            ; 5. Return to the caller by executing the 'ret' instruction.
+
+
+; INSTRUCTIONS:
+    ; Many instructions exist, consult the following webpage for any instruction not listed below:
+    ; https://www.cs.virginia.edu/~evans/cs216/guides/x86.html
+
+ ; Data Movement Instructions
+    ; push -- PUSH ONTO STACK
+        ; Syntax: push <reg, memory, constant>
+        ; First decrements the stack pointer (by 4-bytes in 32-bit system, stack pointer = ESP for 32-bit system), then stores the given value at that location.
+        ; With labels, using [label] stores the data at the label address, not using [] stores a pointer to the data (the direct address is stored).
+        ; [] can be used with registers as well.
+
+    ; pop -- POP FROM STACK
+        ; Syntax: pop <reg, memory>
+        ; First copies 4-bytes of data (for 32-bit system) at the memory location of the stack pointer, [ESP] into the given register or memory location.
+        ; If a memory location is given, it MUST be given in square brackets, e.g. [label].
+
+    ; lea -- LOAD EFFECTIVE ADDRESS
+        ; Syntax: lea <reg>, <memory>, e.g.   lea eax, [ebx]
+        ; lea takes the memory address that 'would be accessed', then stores the actual memory address (not the contents of the address) into
+        ; the first argument, <reg>.
+        
+        ; Ex: lea eax, [ebx+4*esi]     ; the resulting memory address that WOULD BE accessed is stored in eax
+    
+    ; mov -- MOVE
+        ; Syntax: mov <reg, memory>, <reg, memory, constant>
+        ; Copies the data referred to by the second argument into the location referred to by the first argument. 
+        ; i.e. for mov eax, ebx   ; the value of ebx is copied into eax
+        ; i.e. for mov [label], eax    ; the value of eax is stored at memory location given by label
+        ; i.e. for mov byte ptr [eax], 5   ; the value of 5 is stored into a single byte at memory location given by eax
+
+ ; Arithmetic and Logic Instructions
+    ; add -- INTEGER ADDITION
+        ; Syntax: add <reg, memory>, <reg, memory, constant>
+        ; Performs addition between the first and second argument, then stores the result in the first argument.
+
+    ; sub -- INTEGER SUBTRACTION
+        ; Syntax: sub <reg, memory>, <reg, memory, constant>
+        ; Performs subtraction between the first and second argument, then stores the result in the first argument.
+
+    ; inc, dec -- INCREMENT, DECREMENT
+        ; Syntax inc <reg, memory> and dec <reg, memory>
+        ; Increments/decrements the argument by 1.
+
+    ; imul -- INTEGER MULTIPLICATION
+        ; Syntax: imul <reg32>, <reg32, memory> OR imul <reg32>, <reg32, memory>, <constant>
+        ; For 2 arguments, multiplies the first and second arguments, storing the result in the first argument. The third argument is optional, and can ONLY BE a constant.
+        ; For 3 arguments, the second and third arguments are multiplied, and the result stored in the first argument.
+
+    ; idiv -- INTEGER DIVISION
+        ; Syntax: idiv <reg32, memory>
+        ; Divides the contents of combined registers, EDX:EAX, by the given argument's value. EDX:EAX are treated as a 64-bit integer, where EDX is the most significant 4-bytes
+        ; and EAX is the least significant 4-bytes. The quotient of the result is stored in EAX and the remainder in EDX.
+        ; i.e. performs EDX:EAX / argument, giving: EAX = result, EDX = remainder.
+
+    ; bitwise operations not listed.
+
+ ; Control Flow Instructions
+    ; jmp -- JUMP
+        ; Syntax: jmp <label>
+        ; Unconditionally moves instruction execution to where the given label is defined. Specifically, the instruction pointer is set to the label's address.
+
+    ; j-condition -- CONDITIONAL JUMP
+        ; Syntax:
+            ; je <label> (jump when equal)
+            ; jne <label> (jump when not equal)
+            ; jz <label> (jump when last result was zero)
+            ; jg <label> (jump when greater than)
+            ; jge <label> (jump when greater than or equal to)
+            ; jl <label> (jump when less than)
+            ; jle <label> (jump when less than or equal to)
+        ; Uses the machine status word register, EFLAGS, to check the conditions. Bits inside the EFLAGS register indicate conditions.
+        ; If the conditonal is true, jumps to the given label.
+
+    ; cmp -- COMPARE
+        ; Syntax: cmp <reg, memory>, <reg, memory, constant>
+        ; Compares the values of the two operators and updates conditoon flags in the machine status word register (EFLAGS).
+        ; This instruction is equivalent to the subtraction instruction, but with the result being discarded.
+
+    ; call, ret -- CALL and RETURN
+        ; Syntax:
+        ; call <label>
+        ; Similar to jmp instruction, but call pushes the current instruction address onto the stack.
+        ; ret
+        ; Pops return address from the stack and performs unconditional jump to the retrieved location.
+
+
+
+; USEFUL WINDOWS API CALLS:
+    ; HANDLE CreateFileA(
+        ;   LPCSTR lpFileName,
+        ;   DWORD dwDesiredAcess,
+        ;   DWORD dwShareMode,
+        ;   LPSECUTIRY_ATTRIBUTES lpSecurityAttributes,
+        ;   DWORD dwCreationDisposition,
+        ;   DWORD dwFlagsAndAttributes,
+        ;   HANDLE hTemplateFile
+        ; )
+        ; arg1 = pointer to file name, must be null terminated.
+        ; arg2 = access type, so read, write, both or neither
+            ; 0x10000000 --> all possible access rights
+            ; 0x20000000 --> execute access
+            ; 0x40000000 -- write access
+            ; 0x80000000 --> read access
+        ; arg3 = share access type, basically, should this file be allowed to be accessed for read, write, delete, or no access, while it is already OPEN
+            ; 0x00000000 --> prevent other processes from reading, writing, or deleting
+            ; 0x00000004 --> allow other processes delete access
+            ; 0x00000001 --> allow other processes read access
+            ; 0x00000002 --> allow other processes write access
+        ; arg4 = ptr to SECURITY_ATTRIBUTES structure, containing optional security descriptor, and a boolean value determining whether the returned handle can be inherited by child processes
+            ; if arg4 = null, the returned handle cannot be inherited by child processes, and a default security descriptor is used
+            ; look into secutiry descriptors later on, for now, just use NULL
+        ; arg5 = action to take on the file or device
+            ; 2 --> CREATE_ALWAYS: always create new file; if the file exists (and is writable), the function truncates the file (shortens it, likely to 0 bytes) then sets the last error code to '183'
+                ; if the file does not exist, a new file is simply created, the error code is set to '0'
+            ; 1 --> CREATE_NEW: creates new file only if it does not exist. If the file already exists, the function fails and error code is set to '80'
+            ; 4 --> OPEN_ALWAYS: opens file always. If the file exists, the function succeeds and sets error code to '183'. If it does not exist, the error code is '0'
+            ; 3 --> OPEN_EXISTING: opens existing file; if the file does not exist, function fails and error code is set to '2'
+            ; 5 --> TRUNCATE_EXISTING: opens a file and truncates it so that its size is zero bytes IF IT EXISTS. Otherwise, function fails and error code is set to '2'
+        ; arg6 = defines the created file's attributes, or how it should be treated by the system overall
+            ; 32 (0x20) --> FILE_ATTRIBUTE_ARCHIVE: file should be archived, used to mark files for backup or removal
+            ; 16384 (0x4000) --> FILE_ATTRIBUTE_ENCRYPTED: file or directory is encrypted. For a file, this flag means its data is encrypted. for a directory, all newly made files and subdirectories have encryption (flag??) by default
+            ; 2 (0x2) --> FILE_ATTRIBUTE_HIDDEN: The file is hidden.
+            ; 128 (0x80) --> FILE_ATTRIBUTE_NORMAL: The file has no other attributes set, valid if used alone. Use this for general file creation with no special features.
+            ; 4096 (0x1000) --> FILE_ATTRIBUTE_OFFLINE: The data of a file is not immediately available, like files in remote storage (think of onedrive while it's off).
+            ; 1 (0x1) --> FILE_ATTRIBUTE_READONLY: File can only be read, but NOT written to or deleted.
+            ; 4 (0x4) --> FILE_ATTRIBUTE_SYSTEM: File is part of or exclusively used by an operating system
+            ; 256 (0x100) --> FILE_ATTRIBUTE_TEMPORARY: File is being used for temporary storage. (Cache? -- see documentation if more detail is desired).
+        ; arg7 = takes a valid handle to a template file with GENERIC_READ access rights. Template file supplies file attributes and extended attributes for file that is being created.
+            ; This value can be NULL. When opening an existing file, this parameter is ignored. See docs for additional detail + info about encrypted file behavior
+
+    ; BOOL WriteFile(
+        ;   [in]                HANDLE       hFile,
+        ;   [in]                LPCVOID      lpBuffer,
+        ;   [in]                DWORD        nNumberOfBytesToWrite,
+        ;   [out, optional]     LPDWORD      lpNumberOfBytesWritten,
+        ;   [in, out, optional] LPOVERLAPPED lpOverlapped
+        ; );
+        ; arg1 = handle to file
+        ; arg2 = pointer to buffer of bytes to write into file
+        ; arg3 = immediate value representing number of bytes to write
+        ; arg4 = address to store number of bytes written
+        ; arg5 = overlapped???? idk what this is, but NULL can be passed. For more details, look at documentation.
+
+
+; DEBUGGING ASM FILES:
+    ; To run the asm files with debugging info, first we assemble an object file from the .asm using NASM. Flags '-g -F cv8 -f win64' (in that order) makes the object file for windows 64-bit system using debugging info
+    ; in the format of cv8???. Use '-o fileName.obj' to define the output file.
+        ; Command: nasm -g -F cv8 -f win64 main_copy.asm -o main_copy.obj
+    ; Next we compile a .exe from the .obj file using GCC. use '-o fileName.exe' to define the output file, 'fileName.obj' to define the target to be compiled, '-m64' and '-nostartfiles' (idk why) and '-e _start' to
+    ; define the entry point of the file as _start. Additional flags can be used to link Windows APIs (right term?): -l<fileName>, this links the given file, allowing API's within it to be used. Put these flags last!
+    ; Example: -lkernel32   ; functions link WriteConsoleA and ReadConsoleA can be used from this file.
+        ; Command: gcc -m64 -nostartfiles -e _start -o fileName.exe fileName.obj -lkernel32     ; kernel32 is added here as it is very versatile, if functions not used, then remove it
+    ; Last step is to run the .exe using gdb, to do so simply do: gdb fileName.exe. Once connected, the terminal will be running gdb. 
+    ; - Breakpoints can be set using 'break labelName'. 
+    ; - Use 'run' to initiate the program for the first time (or if it finished running completely). 
+    ; - Use 'stepi' to step a single instruction ('si' might also work).
+    ; - Use 'layout asm' to view assembly instructions.
+    ; - Use 'layout reg' to view registers
+    ; - Use 'layout asm' then 'layout regs' to display both register values and instruction execution.
+    ; - LOOK INTO USING 'skip functionName' to skip over kernel32 functions (and other windows functions).
+
+Sample .asm File Format:
+    The entry point for assembly code is denoted by 'global _start', where _start is a label defined at the first instruction that should be executed.
+    See the following:
+
+    section .text   ; defines read-only, executable content
+
+        global _start
+
+
+        _start: ; this is where the program begins
+
+                ; program code goes here
+                ;
+                ;
+                ;
+                ;
+
+
+
+    section .data   ; defines readable and writable data
+        msg db 'Hello World', 0     ; definition of a string is a null byte at the end, the null byte is simply a zero.
+
+
+
+
+
+
